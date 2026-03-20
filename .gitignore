@@ -4,3 +4,4 @@ Strategies/
 build/
 *.egg-info/
 __pycache__/
+.claude
