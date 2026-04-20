@@ -11,12 +11,15 @@ from urllib.request import Request, urlopen
 
 import pandas as pd
 
+# set up the default webaddress, this can change
 IVV_HOLDINGS_URL: Final[str] = (
     "https://www.ishares.com/us/products/239726/"
     "ishares-core-sp-500-etf/1467271812596.ajax"
     "?fileType=csv&fileName=IVV_holdings&dataType=fund"
 )
+# set up the default folder output
 DEFAULT_OUTPUT_DIR: Final[Path] = Path(__file__).resolve().parent
+# setting up and output name, ensuring the collected data falls into a range we expect, and ensure we have the most necessary columns
 DEFAULT_CLEAN_FILENAME: Final[str] = "sp500_current.csv"
 EXPECTED_MIN_SYMBOLS: Final[int] = 450
 EXPECTED_MAX_SYMBOLS: Final[int] = 550
@@ -28,8 +31,9 @@ REQUIRED_HEADER_COLUMNS: Final[set[str]] = {
 }
 
 
-
+# goes to the ishares website and downloads the ivv holdings
 def fetch_csv_bytes(url: str = IVV_HOLDINGS_URL, timeout_seconds: int = 30) -> bytes:
+    # package up the webrequest
     request = Request(
         url,
         headers={
@@ -37,12 +41,15 @@ def fetch_csv_bytes(url: str = IVV_HOLDINGS_URL, timeout_seconds: int = 30) -> b
             "Accept": "text/csv,*/*;q=0.9",
         },
     )
+
     try:
+        # attempt to make the request
         with urlopen(request, timeout=timeout_seconds) as response:
             return response.read()
     except HTTPError as exc:
         raise RuntimeError(
             f"iShares returned HTTP {exc.code} while fetching IVV holdings."
+        # exception chaining: remember both the original low-level problems with the new higher-level problem (RuntimeError)
         ) from exc
     except URLError as exc:
         raise RuntimeError(
@@ -81,7 +88,9 @@ def extract_holdings_as_of(rows: list[list[str]], header_row: int) -> date | Non
 
 
 def parse_holdings_csv(raw_csv: bytes) -> tuple[pd.DataFrame, date | None]:
+    # decode the bytes into one full string
     text = raw_csv.decode("utf-8-sig")
+    # wrap the string so python can read the file as if it were in memory. in the end rows is a nested list of all the tickers
     rows = list(csv.reader(io.StringIO(text)))
     header_row = find_header_row(rows)
     holdings_as_of = extract_holdings_as_of(rows, header_row)
@@ -225,11 +234,14 @@ def main() -> int:
     if args.input:
         raw_csv = args.input.read_bytes()
     else:
+        # get the raw bytes from website
         raw_csv = fetch_csv_bytes(args.url)
 
+    # a time stamp for when it was downloaded
     downloaded_at_utc = (
         datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     )
+
     holdings, holdings_as_of = parse_holdings_csv(raw_csv)
     clean_universe = build_clean_universe(
         holdings,
