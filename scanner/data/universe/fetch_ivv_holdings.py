@@ -98,7 +98,7 @@ def extract_holdings_as_of(rows: list[list[str]], header_row: int) -> date | Non
     return None
 
 
-# take that raw csv file
+# here we take those raw downloaded bytes and convert it into a nice df
 def parse_holdings_csv(raw_csv: bytes) -> tuple[pd.DataFrame, date | None]:
     # decode the bytes into one full string
     text = raw_csv.decode("utf-8-sig")
@@ -110,52 +110,66 @@ def parse_holdings_csv(raw_csv: bytes) -> tuple[pd.DataFrame, date | None]:
     # get the date for when this csv was last updated
     holdings_as_of = extract_holdings_as_of(rows, header_row)
 
-    # 
+    # convert the text to file, parse it into rows and columns
     holdings = pd.read_csv(io.StringIO(text), skiprows=header_row, dtype="string")
+    # clean up the column names
     holdings.columns = [str(column).strip() for column in holdings.columns]
+    # clean up the df; (drop rows where all values empty and reset indexing)
     holdings = holdings.dropna(how="all").reset_index(drop=True)
+    # return the clean df and the date this was last updated
     return holdings, holdings_as_of
 
 
+# clean up symbols, (BRK.B -> BRK-B)
 def normalize_symbol(symbol: str) -> str:
     cleaned = symbol.strip().upper()
     return cleaned.replace(".", "-")
 
 
+# we take the data from and look for a particular column, if not return a Series of the same length as the rows in the data set
 def optional_column(frame: pd.DataFrame, column_name: str) -> pd.Series:
     if column_name in frame.columns:
         return frame[column_name]
     return pd.Series([pd.NA] * len(frame), index=frame.index)
 
 
+# build the data frame
 def build_clean_universe(
-    holdings: pd.DataFrame,
-    *,
-    holdings_as_of: date | None,
-    downloaded_at_utc: str,
-    min_symbols: int = EXPECTED_MIN_SYMBOLS,
-    max_symbols: int = EXPECTED_MAX_SYMBOLS,
-) -> pd.DataFrame:
+        holdings: pd.DataFrame,
+        *,
+        holdings_as_of: date | None,
+        downloaded_at_utc: str,
+        min_symbols: int = EXPECTED_MIN_SYMBOLS,
+        max_symbols: int = EXPECTED_MAX_SYMBOLS,
+    ) -> pd.DataFrame:
+    # check to see if you are missing any required columns
     missing_columns = REQUIRED_HEADER_COLUMNS.difference(holdings.columns)
     if missing_columns:
+        # set of missing value to string
         missing_list = ", ".join(sorted(missing_columns))
         raise ValueError(f"IVV holdings CSV is missing required columns: {missing_list}")
 
+    # create the clean copy
     cleaned = holdings.copy()
+    # column wise operation to clean all the rows of a column
     cleaned["Ticker"] = cleaned["Ticker"].astype("string").str.strip()
     cleaned["Asset Class"] = cleaned["Asset Class"].astype("string").str.strip()
     cleaned["Name"] = cleaned["Name"].astype("string").str.strip()
     cleaned["Sector"] = cleaned["Sector"].astype("string").str.strip()
-
+    # keep only rows where ticker column isnt empty
     cleaned = cleaned[cleaned["Ticker"].notna() & (cleaned["Ticker"] != "")]
+    # keep only equities
     cleaned = cleaned[
         cleaned["Asset Class"].str.casefold() == "equity"
     ].reset_index(drop=True)
 
+    # take evey value in the ticker column and run this function
     cleaned["symbol"] = cleaned["Ticker"].map(normalize_symbol)
+    # drop duplicates and sort
     cleaned = cleaned.drop_duplicates(subset="symbol", keep="first")
     cleaned = cleaned.sort_values("symbol").reset_index(drop=True)
 
+    # build the data frame
     output = pd.DataFrame(
         {
             "holdings_as_of": holdings_as_of.isoformat() if holdings_as_of else pd.NA,
@@ -177,11 +191,10 @@ def build_clean_universe(
             "location": optional_column(cleaned, "Location"),
             "exchange": optional_column(cleaned, "Exchange"),
             "currency": optional_column(cleaned, "Currency"),
-            "cusip": optional_column(cleaned, "CUSIP"),
-            "isin": optional_column(cleaned, "ISIN"),
         }
     )
 
+    # final check to ensure we didnt collect more or less than what was intended
     symbol_count = len(output)
     if symbol_count < min_symbols or symbol_count > max_symbols:
         raise RuntimeError(
@@ -192,6 +205,7 @@ def build_clean_universe(
     return output
 
 
+# create both paths and write to them. return the paths
 def write_outputs(
     *,
     raw_csv: bytes,
@@ -199,12 +213,16 @@ def write_outputs(
     output_dir: Path,
     holdings_as_of: date | None,
 ) -> tuple[Path, Path]:
+    # create the directory
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # date label for the raw file name
     snapshot_date = holdings_as_of.isoformat() if holdings_as_of else date.today().isoformat()
+    # create the paths for each file
     raw_path = output_dir / f"ivv_holdings_{snapshot_date}.csv"
     clean_path = output_dir / DEFAULT_CLEAN_FILENAME
 
+    # create the files
     raw_path.write_bytes(raw_csv)
     clean_universe.to_csv(clean_path, index=False)
 
@@ -258,7 +276,9 @@ def main() -> int:
         datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     )
 
+    # clean up the raw_csv into a nice df and extract the date when it was last uploaded
     holdings, holdings_as_of = parse_holdings_csv(raw_csv)
+
     clean_universe = build_clean_universe(
         holdings,
         holdings_as_of=holdings_as_of,
@@ -271,7 +291,9 @@ def main() -> int:
         holdings_as_of=holdings_as_of,
     )
 
+    # date/date-time object to string
     holdings_date_label = holdings_as_of.isoformat() if holdings_as_of else "unknown"
+    
     print(f"IVV holdings as of: {holdings_date_label}")
     print(f"Clean equity universe size: {len(clean_universe)} symbols")
     print(f"Raw snapshot written to: {raw_path}")
