@@ -178,33 +178,40 @@ def build_clean_universe(
     if missing_columns:
         # set of missing value to string
         missing_list = ", ".join(sorted(missing_columns))
-        raise ValueError(f"IVV holdings CSV is missing required columns: {missing_list}")
+        raise ValueError(f"Holdings file is missing required columns: {missing_list}")
 
-    # create the clean copy and remove unnecessary columns
-    cleaned = holdings.copy()
-    cleaned = holdings.drop(columns=["Identifier", "SEDOL", "Sector", "Shares Held", "Local Currency"])
+    cleaned = holdings.drop(
+        columns=["Identifier", "SEDOL", "Sector", "Shares Held", "Local Currency"],
+        errors="ignore",
+    )
 
     cleaned["Ticker"] = cleaned["Ticker"].astype("string").str.strip()
 
     # keep only rows where ticker column isnt empty
     cleaned = cleaned[cleaned["Ticker"].notna() & (cleaned["Ticker"] != "")]
 
+    cleaned["Ticker"] = cleaned["Ticker"].map(normalize_symbol)
+
     # drop duplicates
     cleaned = cleaned.drop_duplicates(subset="Ticker", keep="first")
+
+    cleaned = cleaned[
+        cleaned["Ticker"]
+        .astype("string")
+        .str.strip()
+        .str.fullmatch(r"[A-Z][A-Z0-9-]*", na=False)
+    ].reset_index(drop=True)
 
     # build the data frame
     output = pd.DataFrame(
         {
             "holdings_as_of": holdings_as_of.isoformat() if holdings_as_of else pd.NA,
             "downloaded_at_utc": downloaded_at_utc,
-            "source": "ishares_ivv",
             "source_ticker": cleaned["Ticker"],
             "name": cleaned["Name"],
             "weight": cleaned["Weight"]
         }
     )
-
-    print(output[:10])
 
     # final check to ensure we didnt collect more or less than what was intended
     symbol_count = len(output)
@@ -234,7 +241,7 @@ def write_outputs(
     # date label for the raw file name
     snapshot_date = holdings_as_of.isoformat() if holdings_as_of else date.today().isoformat()
     # create the path files
-    raw_path = output_dir / f"ivv_holdings_{snapshot_date}.csv"
+    raw_path = output_dir / f"holdings_{snapshot_date}.xlsx"
     clean_path = output_dir / DEFAULT_CLEAN_FILENAME
 
     # create the files
@@ -319,6 +326,7 @@ def main() -> int:
     print(f"Clean equity universe size: {len(clean_universe)} symbols")
     print(f"Raw snapshot written to: {raw_path}")
     print(f"Cleaned universe written to: {clean_path}")
+    print(clean_universe.shape)
 
     return 0
 
