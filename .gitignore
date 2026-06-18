@@ -6,6 +6,7 @@ build/
 __pycache__/
 .claude
 notes.md
+.env
 
 # Pulled market data and generated outputs
 scanner/data/universe/*.csv

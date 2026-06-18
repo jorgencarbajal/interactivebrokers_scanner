@@ -146,7 +146,7 @@ def parse_holdings_file(raw_file: bytes) -> tuple[pd.DataFrame, date | None]:
 
 def normalize_symbol(symbol: str) -> str:
     """
-    clean up symbols, (BRK.B -> BRK-B)
+    clean up symbols, (eg. BRK.B -> BRK-B)
     """
 
     cleaned = symbol.strip().upper()
