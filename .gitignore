@@ -17,3 +17,4 @@ scanner/data/universe/*.xlsx
 scanner/data/prices/**/*.xlsx
 scanner/data/curated/*.xlsx
 scanner/data/outputs/**/*.xlsx
+scanner/*.csv
