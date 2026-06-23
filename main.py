@@ -1,6 +1,4 @@
-def main():
-    print("Hello from trading-and-investing!")
-
+from scanner.scan import main
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
