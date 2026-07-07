@@ -21,25 +21,28 @@ def main():
     # for each stock in universe run the baseline filters:
     for symbol in universe["source_ticker"]:
         # get historical candle data
-        candles = baseline.get_historical_daily_candles(symbol)
+        try:
+            candles = baseline.get_historical_daily_candles (symbol)
 
-        # calculate the 3 baseline filters
-        average_volume = baseline.calc_average_volume(candles)
-        relative_volume = baseline.calc_relative_volume(candles, average_volume)
-        atr = baseline.calc_average_true_range(candles)
+            # calculate the 3 baseline filters
+            average_volume = baseline.calc_average_volume   (candles)
+            relative_volume = baseline.calc_relative_volume (candles, average_volume)
+            atr = baseline.calc_average_true_range(candles)
 
-        # calculate the trend filters
-        sma_20 = trend.calc_sma(candles, 20)
-        sma_50 = trend.calc_sma(candles, 50)
-        sma_200 = trend.calc_sma(candles, 200)
+            # calculate the trend filters
+            sma_20 = trend.calc_sma(candles, 20)
+            sma_50 = trend.calc_sma(candles, 50)
+            sma_200 = trend.calc_sma(candles, 200)
 
-        # current price
-        current_price = candles["close"].iloc[-1]
+            # current price
+            current_price = candles["close"].iloc[-1]
+        except Exception as exc:
+            print(f"{symbol} skipped: {exc}")
+            continue
 
         # if meets conditions
         if baseline.passes_baseline_filters(average_volume, relative_volume, atr):
             # add to results
-
             if trend.passes_trend_filters(current_price, sma_20, sma_50, sma_200):
                 results.append(
                     {
@@ -59,3 +62,7 @@ def main():
     result_df.to_csv(DEFAULT_OUTPUT_PATH, index=False)
 
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

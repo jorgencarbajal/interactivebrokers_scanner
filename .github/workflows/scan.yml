@@ -1,0 +1,53 @@
+name: Run Scanner
+
+on:
+  schedule:
+    # 13:00 UTC Mon-Fri = ~5am PT summer / ~6am PT winter, ~8am ET summer / ~9am ET winter
+    # Runs a few hours after fetch-prices (09:00 UTC) so raw bars are already committed.
+    - cron: "0 13 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run scan.py
+        run: uv run python -m scanner.scan
+
+      - name: Commit updated uptrend results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scanner/uptrend.csv
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: refresh uptrend scan results"
+            git push
+          fi
+
+      - name: Upload uptrend.csv as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptrend
+          path: scanner/uptrend.csv
+          retention-days: 30
